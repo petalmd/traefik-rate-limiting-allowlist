@@ -1,11 +1,13 @@
-displayName: Demo Plugin
+displayName: Rate Limiter with Allowlist
 type: middleware
 
-import: github.com/traefik/plugindemo
+import: github.com/etalmd/traefik-rate-limiting-allowlist
 
-summary: '[Demo] Add Request Header'
+summary: 'The base rate limiter but with an allowlist.'
 
 testData:
-  Headers:
-    X-Demo: test
-    X-URL: '{{URL}}'
+  average: 100
+  exclusion:
+    sourceRange:
+      - 127.0.0.1/32
+      - 192.168.1.7
