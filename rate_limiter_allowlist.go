@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	ptypes "github.com/traefik/paerser/types"
 	"github.com/mailgun/ttlmap"
 	"github.com/opentracing/opentracing-go/ext"
+	ptypes "github.com/traefik/paerser/types"
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/ip"
 	"github.com/traefik/traefik/v2/pkg/log"
@@ -22,6 +22,12 @@ const (
 	typeName   = "RateLimiterType"
 	maxSources = 65536
 )
+
+type IPStrategy struct {
+	Depth       int      `json:"depth,omitempty" toml:"depth,omitempty" yaml:"depth,omitempty" export:"true"`
+	ExcludedIPs []string `json:"excludedIPs,omitempty" toml:"excludedIPs,omitempty" yaml:"excludedIPs,omitempty"`
+	// TODO(mpl): I think we should make RemoteAddr an explicit field. For one thing, it would yield better documentation.
+}
 
 type SourceCriterion struct {
 	IPStrategy        *IPStrategy `json:"ipStrategy,omitempty" toml:"ipStrategy,omitempty" yaml:"ipStrategy,omitempty" export:"true"`
@@ -49,7 +55,6 @@ type Config struct {
 // CreateConfig populates the Config data object
 func CreateConfig() *Config {
 	return &Config{}
-	}
 }
 
 // rateLimiter implements rate limiting and traffic shaping with a set of token buckets;
