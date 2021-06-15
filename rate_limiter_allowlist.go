@@ -23,33 +23,19 @@ const (
 	maxSources = 65536
 )
 
-type IPStrategy struct {
-	Depth       int      `json:"depth,omitempty" toml:"depth,omitempty" yaml:"depth,omitempty" export:"true"`
-	ExcludedIPs []string `json:"excludedIPs,omitempty" toml:"excludedIPs,omitempty" yaml:"excludedIPs,omitempty"`
-	// TODO(mpl): I think we should make RemoteAddr an explicit field. For one thing, it would yield better documentation.
-}
-
-type SourceCriterion struct {
-	IPStrategy        *IPStrategy `json:"ipStrategy,omitempty" toml:"ipStrategy,omitempty" yaml:"ipStrategy,omitempty" export:"true"`
-	RequestHeaderName string      `json:"requestHeaderName,omitempty" toml:"requestHeaderName,omitempty" yaml:"requestHeaderName,omitempty" export:"true"`
-	RequestHost       bool        `json:"requestHost,omitempty" toml:"requestHost,omitempty" yaml:"requestHost,omitempty" export:"true"`
-}
-
-// +k8s:deepcopy-gen=true
-
 // Exclusion defines which IPs to exclude from the middleware.
 type Exclusion struct {
-	SourceRange []string    `json:"sourceRange,omitempty" toml:"sourceRange,omitempty" yaml:"sourceRange,omitempty"`
-	IPStrategy  *IPStrategy `json:"ipStrategy,omitempty" toml:"ipStrategy,omitempty" yaml:"ipStrategy,omitempty"  label:"allowEmpty" file:"allowEmpty" export:"true"`
+	SourceRange []string            `json:"sourceRange,omitempty" toml:"sourceRange,omitempty" yaml:"sourceRange,omitempty"`
+	IPStrategy  *dynamic.IPStrategy `json:"ipStrategy,omitempty" toml:"ipStrategy,omitempty" yaml:"ipStrategy,omitempty"  label:"allowEmpty" file:"allowEmpty" export:"true"`
 }
 
 // Config struct
 type Config struct {
-	Average         int64            `yaml:"average"`
-	Period          ptypes.Duration  `yaml:"period"`
-	Burst           int64            `yaml:"burst"`
-	SourceCriterion *SourceCriterion `yaml:"sourceCriterion"`
-	Exclusion       *Exclusion       `yaml:"exclusion"`
+	Average         int64                    `yaml:"average"`
+	Period          ptypes.Duration          `yaml:"period"`
+	Burst           int64                    `yaml:"burst"`
+	SourceCriterion *dynamic.SourceCriterion `yaml:"sourceCriterion"`
+	Exclusion       *Exclusion               `yaml:"exclusion"`
 }
 
 // CreateConfig populates the Config data object
@@ -59,14 +45,12 @@ func CreateConfig() *Config {
 
 // rateLimiter implements rate limiting and traffic shaping with a set of token buckets;
 // one for each traffic source. The same parameters are applied to all the buckets.
-type rateLimiterallowlist struct {
+type rateLimiterAllowList struct {
 	name      string
 	rate      rate.Limit // reqs/s
 	burst     int64
 	ipChecker *ip.Checker
 	strategy  ip.Strategy
-	// maxDelay is the maximum duration we're willing to wait for a bucket reservation to become effective, in nanoseconds.
-	// For now it is somewhat arbitrarily set to 1/(2*rate).
 	maxDelay      time.Duration
 	sourceMatcher utils.SourceExtractor
 	next          http.Handler
@@ -140,7 +124,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		}
 	}
 
-	return &rateLimiterallowlist{
+	return &rateLimiterAllowList{
 		name:          name,
 		rate:          rate.Limit(rtl),
 		burst:         burst,
@@ -153,11 +137,11 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	}, nil
 }
 
-func (rl *rateLimiterallowlist) GetTracingInformation() (string, ext.SpanKindEnum) {
+func (rl *rateLimiterAllowList) GetTracingInformation() (string, ext.SpanKindEnum) {
 	return rl.name, tracing.SpanKindNoneEnum
 }
 
-func (rl *rateLimiterallowlist) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (rl *rateLimiterAllowList) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := middlewares.GetLoggerCtx(r.Context(), rl.name, typeName)
 	logger := log.FromContext(ctx)
 
@@ -204,14 +188,14 @@ func (rl *rateLimiterallowlist) ServeHTTP(w http.ResponseWriter, r *http.Request
 	rl.next.ServeHTTP(w, r)
 }
 
-func (rl *rateLimiterallowlist) isNotIPAuthorized(req *http.Request) bool {
+func (rl *rateLimiterAllowList) isNotIPAuthorized(req *http.Request) bool {
 	if rl.ipChecker == nil || rl.strategy == nil {
 		return true
 	}
 	return rl.ipChecker.IsAuthorized(rl.strategy.GetIP(req)) == nil
 }
 
-func (rl *rateLimiterallowlist) serveDelayError(ctx context.Context, w http.ResponseWriter, r *http.Request, delay time.Duration) {
+func (rl *rateLimiterAllowList) serveDelayError(ctx context.Context, w http.ResponseWriter, r *http.Request, delay time.Duration) {
 	w.Header().Set("Retry-After", fmt.Sprintf("%.0f", delay.Seconds()))
 	w.Header().Set("X-Retry-In", delay.String())
 	w.WriteHeader(http.StatusTooManyRequests)

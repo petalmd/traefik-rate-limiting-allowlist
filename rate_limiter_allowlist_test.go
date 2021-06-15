@@ -1,4 +1,4 @@
-package ratelimiterallowlist
+package ratelimiterallowlist_test
 
 import (
 	"context"
@@ -11,13 +11,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	ptypes "github.com/traefik/paerser/types"
+	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/testhelpers"
+
+	"github.com/petalmd/traefik-rate-limiting-allowlist"
 )
 
-func TestNewRateLimiter(t *testing.T) {
+func TestNewRateLimiterAllowList(t *testing.T) {
 	testCases := []struct {
 		desc             string
-		config           Config
+		config           *ratelimiterallowlist.Config
 		expectedMaxDelay time.Duration
 		expectedSourceIP string
 		requestHeader    string
@@ -25,7 +28,7 @@ func TestNewRateLimiter(t *testing.T) {
 	}{
 		{
 			desc: "maxDelay computation",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 200,
 				Burst:   10,
 			},
@@ -33,7 +36,7 @@ func TestNewRateLimiter(t *testing.T) {
 		},
 		{
 			desc: "maxDelay computation, low rate regime",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 2,
 				Period:  ptypes.Duration(10 * time.Second),
 				Burst:   10,
@@ -42,7 +45,7 @@ func TestNewRateLimiter(t *testing.T) {
 		},
 		{
 			desc: "default SourceMatcher is remote address ip strategy",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 200,
 				Burst:   10,
 			},
@@ -50,10 +53,10 @@ func TestNewRateLimiter(t *testing.T) {
 		},
 		{
 			desc: "SourceCriterion in config is respected",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 200,
 				Burst:   10,
-				SourceCriterion: &SourceCriterion{
+				SourceCriterion: &dynamic.SourceCriterion{
 					RequestHeaderName: "Foo",
 				},
 			},
@@ -61,11 +64,11 @@ func TestNewRateLimiter(t *testing.T) {
 		},
 		{
 			desc: "SourceCriteria are mutually exclusive",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 200,
 				Burst:   10,
-				SourceCriterion: &SourceCriterion{
-					IPStrategy:        &IPStrategy{},
+				SourceCriterion: &dynamic.SourceCriterion{
+					IPStrategy:        &dynamic.IPStrategy{},
 					RequestHeaderName: "Foo",
 				},
 			},
@@ -73,14 +76,14 @@ func TestNewRateLimiter(t *testing.T) {
 		},
 		{
 			desc: "Exclusion SourceRange is an invalid CIDR",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 200,
 				Burst:   10,
-				SourceCriterion: &SourceCriterion{
-					IPStrategy:        &IPStrategy{},
+				SourceCriterion: &dynamic.SourceCriterion{
+					IPStrategy:        &dynamic.IPStrategy{},
 					RequestHeaderName: "Foo",
 				},
-				Exclusion: &Exclusion{
+				Exclusion: &ratelimiterallowlist.Exclusion{
 					SourceRange: []string{"foo"},
 				},
 			},
@@ -95,14 +98,14 @@ func TestNewRateLimiter(t *testing.T) {
 
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-			h, err := New(context.Background(), next, test.config, "rate-limiter")
+			h, err := ratelimiterallowlist.New(context.Background(), next, test.config, "rate-limiter")
 			if test.expectedError != "" {
 				assert.EqualError(t, err, test.expectedError)
 			} else {
 				require.NoError(t, err)
 			}
 
-			rtl, _ := h.(*rateLimiter)
+			rtl, _ := h.(*ratelimiterallowlist.rateLimiterAllowList)
 			if test.expectedMaxDelay != 0 {
 				assert.Equal(t, test.expectedMaxDelay, rtl.maxDelay)
 			}
@@ -136,10 +139,10 @@ func TestNewRateLimiter(t *testing.T) {
 	}
 }
 
-func TestRateLimit(t *testing.T) {
+func TestRateLimitAllowlist(t *testing.T) {
 	testCases := []struct {
 		desc         string
-		config       Config
+		config       *ratelimiterallowlist.Config
 		loadDuration time.Duration
 		incomingLoad int // in reqs/s
 		burst        int
@@ -147,7 +150,7 @@ func TestRateLimit(t *testing.T) {
 	}{
 		{
 			desc: "Average is respected",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   1,
 			},
@@ -157,7 +160,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "burst allowed, no bursty traffic",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   100,
 			},
@@ -167,7 +170,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "burst allowed, initial burst, under capacity",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   100,
 			},
@@ -178,7 +181,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "burst allowed, initial burst, over capacity",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   100,
 			},
@@ -189,7 +192,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "burst over average, initial burst, over capacity",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   200,
 			},
@@ -200,7 +203,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "lower than 1/s",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 5,
 				Period:  ptypes.Duration(10 * time.Second),
 			},
@@ -211,7 +214,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "lower than 1/s, longer",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 5,
 				Period:  ptypes.Duration(10 * time.Second),
 			},
@@ -222,7 +225,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "lower than 1/s, longer, harsher",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 1,
 				Period:  ptypes.Duration(time.Minute),
 			},
@@ -233,7 +236,7 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "period below 1 second",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 50,
 				Period:  ptypes.Duration(500 * time.Millisecond),
 			},
@@ -244,10 +247,10 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "over capacity, but not with the exclusion SourceRange",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   0,
-				Exclusion: &Exclusion{
+				Exclusion: &ratelimiterallowlist.Exclusion{
 					SourceRange: []string{"127.0.0.1"},
 				},
 			},
@@ -258,10 +261,10 @@ func TestRateLimit(t *testing.T) {
 		},
 		{
 			desc: "exclusion SourceRange not matching, over charge",
-			config: Config{
+			config: &ratelimiterallowlist.Config{
 				Average: 100,
 				Burst:   0,
-				Exclusion: &Exclusion{
+				Exclusion: &ratelimiterallowlist.Exclusion{
 					SourceRange: []string{"192.168.1.1"},
 				},
 			},
@@ -285,7 +288,7 @@ func TestRateLimit(t *testing.T) {
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				reqCount++
 			})
-			h, err := New(context.Background(), next, test.config, "rate-limiter")
+			h, err := ratelimiterallowlist.New(context.Background(), next, test.config, "rate-limiter")
 			require.NoError(t, err)
 
 			loadPeriod := time.Duration(1e9 / test.incomingLoad)
