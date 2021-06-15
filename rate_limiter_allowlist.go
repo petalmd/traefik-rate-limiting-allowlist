@@ -7,13 +7,11 @@ import (
 	"time"
 
 	"github.com/mailgun/ttlmap"
-	"github.com/opentracing/opentracing-go/ext"
 	ptypes "github.com/traefik/paerser/types"
 	"github.com/traefik/traefik/v2/pkg/config/dynamic"
 	"github.com/traefik/traefik/v2/pkg/ip"
 	"github.com/traefik/traefik/v2/pkg/log"
 	"github.com/traefik/traefik/v2/pkg/middlewares"
-	"github.com/traefik/traefik/v2/pkg/tracing"
 	"github.com/vulcand/oxy/utils"
 	"golang.org/x/time/rate"
 )
@@ -135,10 +133,6 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		sourceMatcher: sourceMatcher,
 		buckets:       buckets,
 	}, nil
-}
-
-func (rl *rateLimiterAllowList) GetTracingInformation() (string, ext.SpanKindEnum) {
-	return rl.name, tracing.SpanKindNoneEnum
 }
 
 func (rl *rateLimiterAllowList) ServeHTTP(w http.ResponseWriter, r *http.Request) {
