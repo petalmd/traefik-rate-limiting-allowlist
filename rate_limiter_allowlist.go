@@ -46,11 +46,11 @@ func CreateConfig() *Config {
 // rateLimiter implements rate limiting and traffic shaping with a set of token buckets;
 // one for each traffic source. The same parameters are applied to all the buckets.
 type rateLimiterAllowList struct {
-	name      string
-	rate      rate.Limit // reqs/s
-	burst     int64
-	ipChecker *ip.Checker
-	strategy  ip.Strategy
+	name          string
+	rate          rate.Limit // reqs/s
+	burst         int64
+	ipChecker     *ip.Checker
+	strategy      ip.Strategy
 	maxDelay      time.Duration
 	sourceMatcher utils.SourceExtractor
 	next          http.Handler

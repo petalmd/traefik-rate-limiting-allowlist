@@ -8,7 +8,6 @@ default: fmt lint test
 
 lint:
 	golangci-lint run
-	golint ./...
 
 fmt:
 	gofmt -l -w $(SRC)
