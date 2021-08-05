@@ -4,10 +4,9 @@ go 1.15
 
 require (
 	github.com/mailgun/ttlmap v0.0.0-20170619185759-c1c17f74874f
-	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/traefik/paerser v0.1.4
-	github.com/traefik/traefik/v2 v2.4.8
+	github.com/traefik/traefik/v2 v2.4.13
 	github.com/vulcand/oxy v1.3.0
 	golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6
 )

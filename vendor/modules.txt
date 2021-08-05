@@ -2,7 +2,7 @@
 github.com/cenkalti/backoff/v4
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/go-acme/lego/v4 v4.3.1
+# github.com/go-acme/lego/v4 v4.4.0
 github.com/go-acme/lego/v4/acme
 github.com/go-acme/lego/v4/acme/api
 github.com/go-acme/lego/v4/acme/api/internal/nonces
@@ -35,8 +35,6 @@ github.com/mailgun/ttlmap
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1
 github.com/modern-go/reflect2
-# github.com/opentracing/opentracing-go v1.2.0
-## explicit
 # github.com/patrickmn/go-cache v2.1.0+incompatible
 github.com/patrickmn/go-cache
 # github.com/pmezard/go-difflib v1.0.0
@@ -50,7 +48,7 @@ github.com/stretchr/testify/require
 # github.com/traefik/paerser v0.1.4
 ## explicit
 github.com/traefik/paerser/types
-# github.com/traefik/traefik/v2 v2.4.8
+# github.com/traefik/traefik/v2 v2.4.13
 ## explicit
 github.com/traefik/traefik/v2/pkg/config/dynamic
 github.com/traefik/traefik/v2/pkg/ip
