@@ -179,7 +179,7 @@ func PemDecodeTox509CSR(data []byte) (*x509.CertificateRequest, error) {
 		return nil, err
 	}
 
-	if pemBlock.Type != "CERTIFICATE REQUEST" {
+	if pemBlock.Type != "CERTIFICATE REQUEST" && pemBlock.Type != "NEW CERTIFICATE REQUEST" {
 		return nil, errors.New("PEM block is not a certificate request")
 	}
 
@@ -261,7 +261,7 @@ func generateDerCert(privateKey *rsa.PrivateKey, expiration time.Time, domain st
 	}
 
 	if expiration.IsZero() {
-		expiration = time.Now().Add(365)
+		expiration = time.Now().AddDate(1, 0, 0)
 	}
 
 	template := x509.Certificate{
