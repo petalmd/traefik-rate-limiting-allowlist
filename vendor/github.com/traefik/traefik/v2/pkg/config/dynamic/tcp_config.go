@@ -10,8 +10,9 @@ import (
 
 // TCPConfiguration contains all the TCP configuration parameters.
 type TCPConfiguration struct {
-	Routers  map[string]*TCPRouter  `json:"routers,omitempty" toml:"routers,omitempty" yaml:"routers,omitempty" export:"true"`
-	Services map[string]*TCPService `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty" export:"true"`
+	Routers     map[string]*TCPRouter     `json:"routers,omitempty" toml:"routers,omitempty" yaml:"routers,omitempty" export:"true"`
+	Services    map[string]*TCPService    `json:"services,omitempty" toml:"services,omitempty" yaml:"services,omitempty" export:"true"`
+	Middlewares map[string]*TCPMiddleware `json:"middlewares,omitempty" toml:"middlewares,omitempty" yaml:"middlewares,omitempty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -48,9 +49,11 @@ func (w *TCPWRRService) SetDefaults() {
 // TCPRouter holds the router configuration.
 type TCPRouter struct {
 	EntryPoints []string            `json:"entryPoints,omitempty" toml:"entryPoints,omitempty" yaml:"entryPoints,omitempty" export:"true"`
+	Middlewares []string            `json:"middlewares,omitempty" toml:"middlewares,omitempty" yaml:"middlewares,omitempty" export:"true"`
 	Service     string              `json:"service,omitempty" toml:"service,omitempty" yaml:"service,omitempty" export:"true"`
 	Rule        string              `json:"rule,omitempty" toml:"rule,omitempty" yaml:"rule,omitempty"`
-	TLS         *RouterTCPTLSConfig `json:"tls,omitempty" toml:"tls,omitempty" yaml:"tls,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
+	Priority    int                 `json:"priority,omitempty" toml:"priority,omitempty,omitzero" yaml:"priority,omitempty" export:"true"`
+	TLS         *RouterTCPTLSConfig `json:"tls,omitempty" toml:"tls,omitempty" yaml:"tls,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -73,7 +76,7 @@ type TCPServersLoadBalancer struct {
 	// connection. It is a duration in milliseconds, defaulting to 100. A negative value
 	// means an infinite deadline (i.e. the reading capability is never closed).
 	TerminationDelay *int           `json:"terminationDelay,omitempty" toml:"terminationDelay,omitempty" yaml:"terminationDelay,omitempty" export:"true"`
-	ProxyProtocol    *ProxyProtocol `json:"proxyProtocol,omitempty" toml:"proxyProtocol,omitempty" yaml:"proxyProtocol,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
+	ProxyProtocol    *ProxyProtocol `json:"proxyProtocol,omitempty" toml:"proxyProtocol,omitempty" yaml:"proxyProtocol,omitempty" label:"allowEmpty" file:"allowEmpty" kv:"allowEmpty" export:"true"`
 	Servers          []TCPServer    `json:"servers,omitempty" toml:"servers,omitempty" yaml:"servers,omitempty" label-slice-as-struct:"server" export:"true"`
 }
 
@@ -110,8 +113,10 @@ type TCPServer struct {
 
 // +k8s:deepcopy-gen=true
 
-// ProxyProtocol holds the ProxyProtocol configuration.
+// ProxyProtocol holds the PROXY Protocol configuration.
+// More info: https://doc.traefik.io/traefik/v2.8/routing/services/#proxy-protocol
 type ProxyProtocol struct {
+	// Version defines the PROXY Protocol version to use.
 	Version int `json:"version,omitempty" toml:"version,omitempty" yaml:"version,omitempty" export:"true"`
 }
 
