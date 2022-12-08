@@ -85,6 +85,9 @@ func ParsePEMBundle(bundle []byte) ([]*x509.Certificate, error) {
 // https://github.com/golang/go/blob/693748e9fa385f1e2c3b91ca9acbb6c0ad2d133d/src/crypto/tls/tls.go#L238)
 func ParsePEMPrivateKey(key []byte) (crypto.PrivateKey, error) {
 	keyBlockDER, _ := pem.Decode(key)
+	if keyBlockDER == nil {
+		return nil, fmt.Errorf("invalid PEM block")
+	}
 
 	if keyBlockDER.Type != "PRIVATE KEY" && !strings.HasSuffix(keyBlockDER.Type, " PRIVATE KEY") {
 		return nil, fmt.Errorf("unknown PEM header %q", keyBlockDER.Type)
@@ -179,7 +182,7 @@ func PemDecodeTox509CSR(data []byte) (*x509.CertificateRequest, error) {
 		return nil, err
 	}
 
-	if pemBlock.Type != "CERTIFICATE REQUEST" {
+	if pemBlock.Type != "CERTIFICATE REQUEST" && pemBlock.Type != "NEW CERTIFICATE REQUEST" {
 		return nil, errors.New("PEM block is not a certificate request")
 	}
 
@@ -261,7 +264,7 @@ func generateDerCert(privateKey *rsa.PrivateKey, expiration time.Time, domain st
 	}
 
 	if expiration.IsZero() {
-		expiration = time.Now().Add(365)
+		expiration = time.Now().AddDate(1, 0, 0)
 	}
 
 	template := x509.Certificate{

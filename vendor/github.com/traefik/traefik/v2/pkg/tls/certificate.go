@@ -3,13 +3,14 @@ package tls
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/traefik/traefik/v2/pkg/log"
-	"github.com/traefik/traefik/v2/pkg/tls/generate"
 )
 
 var (
@@ -48,7 +49,7 @@ var (
 // Certs and Key could be either a file path, or the file content itself.
 type Certificate struct {
 	CertFile FileOrContent `json:"certFile,omitempty" toml:"certFile,omitempty" yaml:"certFile,omitempty"`
-	KeyFile  FileOrContent `json:"keyFile,omitempty" toml:"keyFile,omitempty" yaml:"keyFile,omitempty"`
+	KeyFile  FileOrContent `json:"keyFile,omitempty" toml:"keyFile,omitempty" yaml:"keyFile,omitempty" loggable:"false"`
 }
 
 // Certificates defines traefik certificates type
@@ -99,55 +100,8 @@ func (f FileOrContent) Read() ([]byte, error) {
 	return content, nil
 }
 
-// CreateTLSConfig creates a TLS config from Certificate structures.
-func (c *Certificates) CreateTLSConfig(entryPointName string) (*tls.Config, error) {
-	config := &tls.Config{}
-	domainsCertificates := make(map[string]map[string]*tls.Certificate)
-
-	if c.isEmpty() {
-		config.Certificates = []tls.Certificate{}
-
-		cert, err := generate.DefaultCertificate()
-		if err != nil {
-			return nil, err
-		}
-
-		config.Certificates = append(config.Certificates, *cert)
-	} else {
-		for _, certificate := range *c {
-			err := certificate.AppendCertificate(domainsCertificates, entryPointName)
-			if err != nil {
-				log.Errorf("Unable to add a certificate to the entryPoint %q : %v", entryPointName, err)
-				continue
-			}
-
-			for _, certDom := range domainsCertificates {
-				for _, cert := range certDom {
-					config.Certificates = append(config.Certificates, *cert)
-				}
-			}
-		}
-	}
-	return config, nil
-}
-
-// isEmpty checks if the certificates list is empty.
-func (c *Certificates) isEmpty() bool {
-	if len(*c) == 0 {
-		return true
-	}
-	var key int
-	for _, cert := range *c {
-		if len(cert.CertFile.String()) != 0 && len(cert.KeyFile.String()) != 0 {
-			break
-		}
-		key++
-	}
-	return key == len(*c)
-}
-
-// AppendCertificate appends a Certificate to a certificates map keyed by entrypoint.
-func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certificate, ep string) error {
+// AppendCertificate appends a Certificate to a certificates map keyed by store name.
+func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certificate, storeName string) error {
 	certContent, err := c.CertFile.Read()
 	if err != nil {
 		return fmt.Errorf("unable to read CertFile : %w", err)
@@ -169,7 +123,6 @@ func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certifi
 		SANs = append(SANs, strings.ToLower(parsedCert.Subject.CommonName))
 	}
 	if parsedCert.DNSNames != nil {
-		sort.Strings(parsedCert.DNSNames)
 		for _, dnsName := range parsedCert.DNSNames {
 			if dnsName != parsedCert.Subject.CommonName {
 				SANs = append(SANs, strings.ToLower(dnsName))
@@ -183,13 +136,16 @@ func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certifi
 			}
 		}
 	}
+
+	// Guarantees the order to produce a unique cert key.
+	sort.Strings(SANs)
 	certKey := strings.Join(SANs, ",")
 
 	certExists := false
-	if certs[ep] == nil {
-		certs[ep] = make(map[string]*tls.Certificate)
+	if certs[storeName] == nil {
+		certs[storeName] = make(map[string]*tls.Certificate)
 	} else {
-		for domains := range certs[ep] {
+		for domains := range certs[storeName] {
 			if domains == certKey {
 				certExists = true
 				break
@@ -197,10 +153,10 @@ func (c *Certificate) AppendCertificate(certs map[string]map[string]*tls.Certifi
 		}
 	}
 	if certExists {
-		log.Debugf("Skipping addition of certificate for domain(s) %q, to EntryPoint %s, as it already exists for this Entrypoint.", certKey, ep)
+		log.Debugf("Skipping addition of certificate for domain(s) %q, to TLS Store %s, as it already exists for this store.", certKey, storeName)
 	} else {
 		log.Debugf("Adding certificate for domain(s) %s", certKey)
-		certs[ep][certKey] = &tlsCert
+		certs[storeName][certKey] = &tlsCert
 	}
 
 	return err
@@ -272,4 +228,87 @@ func (c *Certificates) Set(value string) error {
 // Type is type of the struct.
 func (c *Certificates) Type() string {
 	return "certificates"
+}
+
+// VerifyPeerCertificate verifies the chain certificates and their URI.
+func VerifyPeerCertificate(uri string, cfg *tls.Config, rawCerts [][]byte) error {
+	// TODO: Refactor to avoid useless verifyChain (ex: when insecureskipverify is false)
+	cert, err := verifyChain(cfg.RootCAs, rawCerts)
+	if err != nil {
+		return err
+	}
+
+	if len(uri) > 0 {
+		return verifyServerCertMatchesURI(uri, cert)
+	}
+
+	return nil
+}
+
+// verifyServerCertMatchesURI is used on tls connections dialed to a server
+// to ensure that the certificate it presented has the correct URI.
+func verifyServerCertMatchesURI(uri string, cert *x509.Certificate) error {
+	if cert == nil {
+		return errors.New("peer certificate mismatch: no peer certificate presented")
+	}
+
+	// Our certs will only ever have a single URI for now so only check that
+	if len(cert.URIs) < 1 {
+		return errors.New("peer certificate mismatch: peer certificate invalid")
+	}
+
+	gotURI := cert.URIs[0]
+
+	// Override the hostname since we rely on x509 constraints to limit ability to spoof the trust domain if needed
+	// (i.e. because a root is shared with other PKI or Consul clusters).
+	// This allows for seamless migrations between trust domains.
+
+	expectURI := &url.URL{}
+	id, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid URI", uri)
+	}
+	*expectURI = *id
+	expectURI.Host = gotURI.Host
+
+	if strings.EqualFold(gotURI.String(), expectURI.String()) {
+		return nil
+	}
+
+	return fmt.Errorf("peer certificate mismatch got %s, want %s", gotURI, uri)
+}
+
+// verifyChain performs standard TLS verification without enforcing remote hostname matching.
+func verifyChain(rootCAs *x509.CertPool, rawCerts [][]byte) (*x509.Certificate, error) {
+	// Fetch leaf and intermediates. This is based on code form tls handshake.
+	if len(rawCerts) < 1 {
+		return nil, errors.New("tls: no certificates from peer")
+	}
+
+	certs := make([]*x509.Certificate, len(rawCerts))
+	for i, asn1Data := range rawCerts {
+		cert, err := x509.ParseCertificate(asn1Data)
+		if err != nil {
+			return nil, fmt.Errorf("tls: failed to parse certificate from peer: %w", err)
+		}
+
+		certs[i] = cert
+	}
+
+	opts := x509.VerifyOptions{
+		Roots:         rootCAs,
+		Intermediates: x509.NewCertPool(),
+	}
+
+	// All but the first cert are intermediates
+	for _, cert := range certs[1:] {
+		opts.Intermediates.AddCert(cert)
+	}
+
+	_, err := certs[0].Verify(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return certs[0], nil
 }
